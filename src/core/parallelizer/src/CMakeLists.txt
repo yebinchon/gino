@@ -4,6 +4,8 @@ set(Srcs
   Parallelizer_loop.cpp
   Parallelizer_loops.cpp
   Helper.cpp
+  MemorySpeculationOracle.cpp
+  Namer.cpp
 )
 
 # Compilation flags
