@@ -57,7 +57,7 @@ private:
   std::map<int, BasicBlock *> bbMap;
   std::map<int, Instruction *> instMap;
 
-  static bool fileOpened;
+  inline static bool fileOpened = false;
 
   class DepEdge {
   public:

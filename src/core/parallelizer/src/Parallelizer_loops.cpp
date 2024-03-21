@@ -23,7 +23,8 @@
 
 namespace arcana::gino {
 
-bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
+bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics,
+                                    bool readProfile) {
 
   /*
    * Fetch the verbosity level.
@@ -36,8 +37,8 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
   auto M = noelle.getProgram();
   errs() << "Parallelizer:  Analyzing the module " << M->getName() << "\n";
   if (!this->collectThreadPoolHelperFunctionsAndTypes(*M, noelle)) {
-    errs()
-        << "Parallelizer:    ERROR: I could not find the runtime within the module\n";
+    errs() << "Parallelizer:    ERROR: I could not find the runtime within the "
+              "module\n";
     return false;
   }
 
@@ -81,9 +82,8 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
   auto mm = noelle.getMetadataManager();
   std::map<uint32_t, LoopContent *> loopParallelizationOrder;
   for (auto tree : forest->getTrees()) {
-    auto selector = [&noelle, &mm, &loopParallelizationOrder, &isSelected](
-                        LoopTree *n,
-                        uint32_t treeLevel) -> bool {
+    auto selector = [&noelle, &mm, &loopParallelizationOrder,
+                     &isSelected](LoopTree *n, uint32_t treeLevel) -> bool {
       auto ls = n->getLoop();
       if (!mm->doesHaveMetadata(ls, "noelle.parallelizer.looporder")) {
         return false;
@@ -93,8 +93,8 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
       if (!isSelected(parallelizationOrderIndex)) {
         return false;
       }
-      auto optimizations = { LoopContentOptimization::MEMORY_CLONING_ID,
-                             LoopContentOptimization::THREAD_SAFE_LIBRARY_ID };
+      auto optimizations = {LoopContentOptimization::MEMORY_CLONING_ID,
+                            LoopContentOptimization::THREAD_SAFE_LIBRARY_ID};
       auto ldi = noelle.getLoopContent(ls, optimizations);
       loopParallelizationOrder[parallelizationOrderIndex] = ldi;
       return false;
@@ -142,15 +142,16 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
         auto loopID = loopIDOpt.value();
         errs() << loopID;
       }
-      errs()
-          << " cannot be parallelized because one of its parent has been parallelized already\n";
+      errs() << " cannot be parallelized because one of its parent has been "
+                "parallelized already\n";
       continue;
     }
 
     /*
      * Parallelize the current loop.
      */
-    auto loopIsParallelized = this->parallelizeLoop(ldi, noelle, heuristics);
+    auto loopIsParallelized =
+        this->parallelizeLoop(ldi, noelle, heuristics, readProfile);
 
     /*
      * Keep track of the parallelization.
@@ -161,8 +162,8 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
       auto loopID = loopIDOpt.value();
       errs() << loopID;
       errs() << " has been parallelized\n";
-      errs()
-          << "Parallelizer:      Keep track of basic blocks being modified by the parallelization\n";
+      errs() << "Parallelizer:      Keep track of basic blocks being modified "
+                "by the parallelization\n";
       modified = true;
       for (auto bb : ls->getBasicBlocks()) {
         modifiedBBs[bb] = true;

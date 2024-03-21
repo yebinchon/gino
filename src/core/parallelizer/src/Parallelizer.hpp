@@ -57,9 +57,11 @@ private:
   /*
    * Methods
    */
-  bool parallelizeLoop(LoopContent *loopContent, Noelle &par, Heuristics *h);
+  bool parallelizeLoop(LoopContent *loopContent, Noelle &par, Heuristics *h,
+                       bool readProfile = false);
 
-  bool parallelizeLoops(Noelle &noelle, Heuristics *heuristics);
+  bool parallelizeLoops(Noelle &noelle, Heuristics *heuristics,
+                        bool readProfile = false);
 
   std::vector<LoopContent *> getLoopsToParallelize(Module &M, Noelle &par);
 

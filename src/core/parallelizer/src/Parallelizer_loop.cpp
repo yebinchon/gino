@@ -19,13 +19,13 @@
  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
  OR OTHER DEALINGS IN THE SOFTWARE.
  */
+#include "MemSpec.hpp"
 #include "Parallelizer.hpp"
 
 namespace arcana::gino {
 
-bool Parallelizer::parallelizeLoop(LoopContent *loopContent,
-                                   Noelle &par,
-                                   Heuristics *h) {
+bool Parallelizer::parallelizeLoop(LoopContent *loopContent, Noelle &par,
+                                   Heuristics *h, bool readProfile) {
   auto prefix = "Parallelizer: parallelizerLoop: ";
 
   /*
@@ -37,12 +37,11 @@ bool Parallelizer::parallelizeLoop(LoopContent *loopContent,
   /*
    * Allocate the parallelization techniques.
    */
-  DSWP dswp{ par, this->forceParallelization, !this->forceNoSCCPartition };
-  DOALL doall{ par };
-  HELIX helix{ par, this->forceParallelization };
-  std::vector<ParallelizationTechnique *> parallelizationTechniques{ &doall,
-                                                                     &helix,
-                                                                     &dswp };
+  DSWP dswp{par, this->forceParallelization, !this->forceNoSCCPartition};
+  DOALL doall{par};
+  HELIX helix{par, this->forceParallelization};
+  std::vector<ParallelizationTechnique *> parallelizationTechniques{
+      &doall, &helix, &dswp};
 
   /*
    * Fetch the profiles.
@@ -72,6 +71,11 @@ bool Parallelizer::parallelizeLoop(LoopContent *loopContent,
   auto loopFunction = loopStructure->getFunction();
   assert(par.verifyCode());
 
+  if (!readProfile) {
+    errs() << "PROMPT TARGETS: " << loopFunction->getName() << " "
+           << loopHeader->getName() << "\n";
+  }
+
   /*
    * Print
    */
@@ -99,8 +103,8 @@ bool Parallelizer::parallelizeLoop(LoopContent *loopContent,
            << "\n";
     if (profiles->isAvailable()) {
       errs() << prefix << "  Coverage = "
-             << (profiles->getDynamicTotalInstructionCoverage(loopStructure)
-                 * 100.0)
+             << (profiles->getDynamicTotalInstructionCoverage(loopStructure) *
+                 100.0)
              << "%\n";
     }
 
@@ -138,9 +142,9 @@ bool Parallelizer::parallelizeLoop(LoopContent *loopContent,
      * Check if the current parallelization technique is applicable to the
      * current loop.
      */
-    if (par.isTransformationEnabled(parID)
-        && ltm->isTransformationEnabled(parID)
-        && parallelizationTechnique->canBeAppliedToLoop(loopContent, h)) {
+    if (par.isTransformationEnabled(parID) &&
+        ltm->isTransformationEnabled(parID) &&
+        parallelizationTechnique->canBeAppliedToLoop(loopContent, h)) {
 
       /*
        * Parallelize the current loop with the current parallelization
@@ -193,12 +197,7 @@ bool Parallelizer::parallelizeLoop(LoopContent *loopContent,
   auto loopExitBlocks = loopStructure->getLoopExitBasicBlocks();
   auto linker = par.getLinker();
   linker->linkTransformedLoopToOriginalFunction(
-      loopPreHeader,
-      entryPoint,
-      exitPoint,
-      envArray,
-      exitIndex,
-      loopExitBlocks,
+      loopPreHeader, entryPoint, exitPoint, envArray, exitIndex, loopExitBlocks,
       usedTechnique->getMinimumNumberOfIdleCores());
   assert(par.verifyCode());
 
