@@ -45,6 +45,8 @@ NODOALLFILTERING=
 # Disable filtering of search space that checks if parallelizing one DOALL loop at a time yields a better execution time
 NODOALLTIMEFILTERING=
 
+PROMPT_DRIVER=/scratch/yc0769/parallelizer-workspace/PROMPT/scripts/prompt_driver.py
+
 all: baseline $(OPTIMIZED)
 
 %.bc: %.c
@@ -67,7 +69,7 @@ $(OPTIMIZED): test_parallelized.bc
 $(OPTIMIZED_AUTOTUNED): test_parallelized_autotuned.bc
 	$(CPP) -std=c++14 -pthreads $(OPT_LEVEL) $< $(LIBS) -o $@
 
-test_parallelized.bc: baseline_with_metadata.bc Parallelizer_utils.bc
+test_parallelized.bc: named_with_metadata.bc Parallelizer_utils.bc
 	gino $< -o $@ $(NOELLE_OPTIONS) $(PARALLELIZATION_OPTIONS)
 
 test_parallelized_autotuned.bc: baseline_with_metadata.bc input.txt Parallelizer_utils.bc
@@ -75,6 +77,17 @@ test_parallelized_autotuned.bc: baseline_with_metadata.bc input.txt Parallelizer
 
 baseline.bc: test.bc
 	$(CPP) $(OPT_LEVEL) -c -emit-llvm $^ -o $@
+
+# SLAMP
+benchmark.result.slamp.profile: named_with_metadata.bc profile.in
+	PROFILEARGS=`cat profile.in` python $(PROMPT_DRIVER) --named code_to_parallelize.bc -m dep-context -t 32 --target-loop $(TARGETLOOP) --target-fcn $(TARGETFCN) --output benchmark.result.slamp.profile
+
+result.slamp.profile: benchmark.result.slamp.profile
+	cat benchmark.result.slamp.profile >> result.slamp.profile
+
+named_with_metadata.bc: baseline_with_metadata.bc
+	python $(PROMPT_DRIVER) baseline_with_metadata.bc -m dep-context --skip-run --stop-at-named 
+	mv baseline_with_metadata.named.bc named_with_metadata.bc
 
 baseline_with_metadata.bc: default.profraw baseline_pre.bc
 	noelle-meta-prof-embed $^ -o $@
@@ -104,10 +117,13 @@ test_correctness: input.txt baseline $(OPTIMIZED)
 	@../../scripts/test_correctness.sh $(NUM_RUNS)
 
 clean:
+	mv test.bc test.save
 	rm -f *.bc *.dot *.jpg *.ll *.S *.s *.o baseline $(OPTIMIZED) $(OPTIMIZED_AUTOTUNED) *.prof *.profraw *prof .*.dot
-	rm -f time_parallelized.txt compiler_output.txt input.txt ;
+	rm -f time_parallelized.txt compiler_output.txt ;
 	rm -f output*.txt ;
 	rm -f OUT ;
+	rm -f *.exe
 	rm -rf binaryToRun baselineTime.txt executionTime.txt exploredConfs.json opentuner.db opentuner.log ;
+	mv test.save test.bc
 
 .PHONY: test_correctness clean
