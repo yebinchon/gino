@@ -1,6 +1,7 @@
 #include "MemSpec.hpp"
 #include "Namer.hpp"
 #include "llvm/IR/Metadata.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -53,16 +54,21 @@ bool MemorySpeculationOracle::canThereBeAMemoryDataDependence(
   auto loopid = Namer::getBlkId(bb);
   // loop has been profiled
   if (this->edges.count(loopid)) {
+    // FIXME: hack to avoid PROMPT bug where call instruction ids are incorrect
+    if (isa<CallInst>(*src) || isa<CallInst>(*dst)) {
+      errs() << "   YEBIN: call instruction. Skipping\n";
+      return false;
+    }
     auto srcid = Namer::getInstrId(src);
     auto dstid = Namer::getInstrId(dst);
-    errs() << "YEBIN: asking for profiled loop: " << srcid << " -> " << dstid
-           << "\n";
+    errs() << "YEBIN: asking for profiled loop " << loopid << ": " << srcid
+           << " -> " << dstid << "\n";
     if (this->edges[loopid].count(DepEdge(srcid, dstid, 0)) ||
         this->edges[loopid].count(DepEdge(srcid, dstid, 1))) {
-      errs() << "YEBIN: found profiled edge\n";
+      errs() << "   YEBIN: found profiled edge\n";
       return true;
     }
-    errs() << "YEBIN: nonexistent edge in profiling\n";
+    errs() << "   YEBIN: nonexistent edge in profiling\n";
     return false;
   }
   return true;
@@ -70,20 +76,43 @@ bool MemorySpeculationOracle::canThereBeAMemoryDataDependence(
 
 bool MemorySpeculationOracle::canThisDependenceBeLoopCarried(
     noelle::DGEdge<Value, Value> *dep, noelle::LoopStructure &loop) {
+  auto bb = loop.getHeader();
+  auto loopid = Namer::getBlkId(bb);
+  // loop has been profiled
+  if (this->edges.count(loopid)) {
+    auto *src = dep->getSrc();
+    auto *dst = dep->getDst();
+    // FIXME: hack to avoid PROMPT bug where call instruction ids are incorrect
+    if (isa<CallInst>(*src) || isa<CallInst>(*dst)) {
+      errs() << "   YEBIN: call instruction. Skipping\n";
+      return false;
+    }
+    auto srcid = Namer::getInstrId(dyn_cast<Instruction>(src));
+    auto dstid = Namer::getInstrId(dyn_cast<Instruction>(dst));
+    if (this->edges[loopid].count(DepEdge(srcid, dstid, 1))) {
+      errs() << "   YEBIN: found loop-carried edge\n";
+      return true;
+    }
+    errs() << "   YEBIN: nonexistent loop-carried edge in profiling\n";
+    return false;
+  }
   return true;
 }
 
 void MemorySpeculationOracle::createNamerMap(Module &M) {
   for (auto &F : M) {
     int id = Namer::getFuncId(&F);
+    errs() << "YEBIN: function " << F.getName() << ": " << id << "\n";
     if (id != -1)
       functionMap[id] = &F;
     for (auto &BB : F) {
       int id = Namer::getBlkId(&BB);
+      errs() << "YEBIN: bb " << BB.getName() << ": " << id << "\n";
       if (id != -1)
         bbMap[id] = &BB;
       for (auto &I : BB) {
         int id = Namer::getInstrId(&I);
+        errs() << "YEBIN: inst " << id << ": " << I << "\n";
         if (id != -1)
           instMap[id] = &I;
       }
