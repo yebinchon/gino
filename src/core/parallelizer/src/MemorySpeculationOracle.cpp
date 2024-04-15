@@ -52,13 +52,9 @@ bool MemorySpeculationOracle::canThereBeAMemoryDataDependence(
 
   auto bb = loop.getHeader();
   auto loopid = Namer::getBlkId(bb);
+  // return false;
   // loop has been profiled
   if (this->edges.count(loopid)) {
-    // FIXME: hack to avoid PROMPT bug where call instruction ids are incorrect
-    if (isa<CallInst>(*src) || isa<CallInst>(*dst)) {
-      errs() << "   YEBIN: call instruction. Skipping\n";
-      return false;
-    }
     auto srcid = Namer::getInstrId(src);
     auto dstid = Namer::getInstrId(dst);
     errs() << "YEBIN: asking for profiled loop " << loopid << ": " << srcid
@@ -82,13 +78,15 @@ bool MemorySpeculationOracle::canThisDependenceBeLoopCarried(
   if (this->edges.count(loopid)) {
     auto *src = dep->getSrc();
     auto *dst = dep->getDst();
-    // FIXME: hack to avoid PROMPT bug where call instruction ids are incorrect
-    if (isa<CallInst>(*src) || isa<CallInst>(*dst)) {
-      errs() << "   YEBIN: call instruction. Skipping\n";
-      return false;
+    // FIXME: PROMPT can only handle deps between instructions
+    //        can iterate through insts in an SCC
+    if (!isa<Instruction>(src) || !isa<Instruction>(dst)) {
+      return true;
     }
     auto srcid = Namer::getInstrId(dyn_cast<Instruction>(src));
     auto dstid = Namer::getInstrId(dyn_cast<Instruction>(dst));
+    errs() << "YEBIN: asking for profiled loop " << loopid << ": " << srcid
+           << " -> " << dstid << "\n";
     if (this->edges[loopid].count(DepEdge(srcid, dstid, 1))) {
       errs() << "   YEBIN: found loop-carried edge\n";
       return true;
@@ -97,22 +95,23 @@ bool MemorySpeculationOracle::canThisDependenceBeLoopCarried(
     return false;
   }
   return true;
+  // return false;
 }
 
 void MemorySpeculationOracle::createNamerMap(Module &M) {
   for (auto &F : M) {
     int id = Namer::getFuncId(&F);
-    errs() << "YEBIN: function " << F.getName() << ": " << id << "\n";
+    // errs() << "YEBIN: function " << F.getName() << ": " << id << "\n";
     if (id != -1)
       functionMap[id] = &F;
     for (auto &BB : F) {
       int id = Namer::getBlkId(&BB);
-      errs() << "YEBIN: bb " << BB.getName() << ": " << id << "\n";
+      // errs() << "YEBIN: bb " << BB.getName() << ": " << id << "\n";
       if (id != -1)
         bbMap[id] = &BB;
       for (auto &I : BB) {
         int id = Namer::getInstrId(&I);
-        errs() << "YEBIN: inst " << id << ": " << I << "\n";
+        // errs() << "YEBIN: inst " << id << ": " << I << "\n";
         if (id != -1)
           instMap[id] = &I;
       }
@@ -138,14 +137,17 @@ void MemorySpeculationOracle::openSpecFile() {
 
     auto loopid = string_to<uint32_t>(tokens[0]);
     auto src = string_to<uint32_t>(tokens[1]);
-    // auto baredst = string_to<uint32_t>(tokens[2]);
+    auto baredst = string_to<uint32_t>(tokens[2]);
     auto dst = string_to<uint32_t>(tokens[3]);
     auto islc = string_to<uint32_t>(tokens[4]);
     // auto count = string_to<uint32_t>(tokens[5]);
 
-    if (src == 0 && dst == 0) {
+    if (src == 0 && baredst == 0) {
       errs() << "Counting loop " << loopid << "\n";
     } else {
+      // Make sure we are tracking the instruction in the loop
+      if (dst == 0)
+        dst = baredst;
       errs() << "Dep from " << src << " to " << dst << "\n";
       BasicBlock *header = getBBWithID(loopid);
       assert(header);
@@ -153,6 +155,14 @@ void MemorySpeculationOracle::openSpecFile() {
     }
     DepEdge edge(src, dst, islc);
     edges[loopid][edge] = true;
+  }
+  errs() << "PROFILE RESULT:\n";
+  for (auto &loop : edges) {
+    errs() << "Loop " << loop.first << ":\n";
+    for (auto &edge : loop.second) {
+      errs() << "  " << edge.first.src << " -> " << edge.first.dst
+             << " (lc: " << edge.first.cross << ")\n";
+    }
   }
 }
 

@@ -22,10 +22,12 @@ if __name__ == "__main__":
     "-b",
     "--benchmark",
     help="Path to bechmark",
-    default="/scratch/yc0769/parallelizer-workspace/gino/tests/regression/workspace"
+    default="workspace"
   )
+  root_path='/scratch/yc0769/parallelizer-workspace/gino/tests/regression'
 
   args = argparser.parse_args()
+  args.benchmark = os.path.join(root_path, args.benchmark)
   if not os.path.exists(args.benchmark):
     raise RuntimeError(f"{args.benchmark} does not exist")
 
@@ -39,7 +41,7 @@ if __name__ == "__main__":
     with open(args.log, 'r') as logfile:
       for line in logfile:
         if "PROMPT TARGETS: " in line:
-          targetstr += line.split(maxsplit=2)[2]+"\n"
+          targetstr += line.split(maxsplit=2)[2]
     with open(args.target_list, 'w') as targetfile:
       targetfile.write(targetstr)
 

@@ -126,4 +126,7 @@ clean:
 	rm -rf binaryToRun baselineTime.txt executionTime.txt exploredConfs.json opentuner.db opentuner.log ;
 	mv test.save test.bc
 
+clean-prompt:
+	rm *result.slamp.profile target_list slamp.time
+
 .PHONY: test_correctness clean
