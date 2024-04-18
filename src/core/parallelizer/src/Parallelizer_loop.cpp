@@ -71,10 +71,10 @@ bool Parallelizer::parallelizeLoop(LoopContent *loopContent, Noelle &par,
   auto loopFunction = loopStructure->getFunction();
   assert(par.verifyCode());
 
-  if (!readProfile) {
-    errs() << "PROMPT TARGETS: " << loopFunction->getName() << " "
-           << loopHeader->getName() << "\n";
-  }
+  // if (!readProfile) {
+  //  errs() << "PROMPT TARGETS: " << loopFunction->getName() << " "
+  //         << loopHeader->getName() << "\n";
+  //}
 
   /*
    * Print

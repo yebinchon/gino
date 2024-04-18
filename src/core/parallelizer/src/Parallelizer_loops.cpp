@@ -128,6 +128,27 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics,
       }
     }
 
+    if (!readProfile) {
+      errs() << "PROMPT TARGETS: " << ls->getFunction()->getName() << " "
+             << ls->getHeader()->getName() << "\n";
+    }
+
+    // TODO: move to separate function?
+    auto ldg = ldi->getLoopDG();
+    auto deps = ldg->getSortedDependences();
+    int num_deps = 0;
+    int num_lc_deps = 0;
+    for (auto dep : deps) {
+      if (isa<MemoryDependence<Value, Value>>(dep)) {
+        num_deps++;
+        if (dep->isLoopCarriedDependence())
+          num_lc_deps++;
+      }
+    }
+    errs() << "DEPS IN LOOP " << ls->getFunction()->getName()
+           << "::" << ls->getHeader()->getName() << ": " << num_deps << " "
+           << num_lc_deps << "\n";
+
     /*
      * Get loop ID.
      */
