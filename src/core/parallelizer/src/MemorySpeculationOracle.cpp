@@ -38,6 +38,16 @@ static size_t split(const std::string s, std::vector<std::string> &tokens,
   return tokens.size();
 }
 
+static bool isExternalCall(const Instruction *I) {
+  auto callInst = dyn_cast<CallInst>(I);
+  if (!callInst)
+    return false;
+
+  auto calledFunction = callInst->getCalledFunction();
+
+  return calledFunction->isDeclaration();
+}
+
 MemorySpeculationOracle::MemorySpeculationOracle(Noelle &noelle, Module &M)
     : DependenceAnalysis("MemorySpeculationOracle"), noelle(noelle) {
 
@@ -49,6 +59,8 @@ MemorySpeculationOracle::~MemorySpeculationOracle() {}
 
 bool MemorySpeculationOracle::canThereBeAMemoryDataDependence(
     Instruction *src, Instruction *dst, LoopStructure &loop) {
+  if (!fileOpened)
+    return true;
 
   auto bb = loop.getHeader();
   auto loopid = Namer::getBlkId(bb);
@@ -57,6 +69,10 @@ bool MemorySpeculationOracle::canThereBeAMemoryDataDependence(
   if (this->edges.count(loopid)) {
     auto srcid = Namer::getInstrId(src);
     auto dstid = Namer::getInstrId(dst);
+    // TODO: once PROMPT is able to handle external calls, don't have to check
+    if (isExternalCall(src) || isExternalCall(dst))
+      return true;
+
     errs() << "YEBIN: asking for profiled loop " << loopid << ": " << srcid
            << " -> " << dstid << "\n";
     if (this->edges[loopid].count(DepEdge(srcid, dstid, 0)) ||
@@ -72,19 +88,30 @@ bool MemorySpeculationOracle::canThereBeAMemoryDataDependence(
 
 bool MemorySpeculationOracle::canThisDependenceBeLoopCarried(
     noelle::DGEdge<Value, Value> *dep, noelle::LoopStructure &loop) {
+  if (!fileOpened)
+    return true;
+
   auto bb = loop.getHeader();
   auto loopid = Namer::getBlkId(bb);
   // loop has been profiled
   if (this->edges.count(loopid)) {
     auto *src = dep->getSrc();
     auto *dst = dep->getDst();
+
+    auto *srcInst = dyn_cast<Instruction>(src);
+    auto *dstInst = dyn_cast<Instruction>(dst);
     // FIXME: PROMPT can only handle deps between instructions
     //        can iterate through insts in an SCC
-    if (!isa<Instruction>(src) || !isa<Instruction>(dst)) {
+    if (!srcInst || !dstInst) {
       return true;
     }
-    auto srcid = Namer::getInstrId(dyn_cast<Instruction>(src));
-    auto dstid = Namer::getInstrId(dyn_cast<Instruction>(dst));
+    auto srcid = Namer::getInstrId(srcInst);
+    auto dstid = Namer::getInstrId(dstInst);
+
+    // TODO: once PROMPT is able to handle external calls, don't have to check
+    if (isExternalCall(srcInst) || isExternalCall(dstInst))
+      return true;
+
     errs() << "YEBIN: asking for profiled loop " << loopid << ": " << srcid
            << " -> " << dstid << "\n";
     if (this->edges[loopid].count(DepEdge(srcid, dstid, 1))) {
@@ -101,17 +128,17 @@ bool MemorySpeculationOracle::canThisDependenceBeLoopCarried(
 void MemorySpeculationOracle::createNamerMap(Module &M) {
   for (auto &F : M) {
     int id = Namer::getFuncId(&F);
-    // errs() << "YEBIN: function " << F.getName() << ": " << id << "\n";
+    errs() << "YEBIN: function " << id << ": " << F.getName() << "\n";
     if (id != -1)
       functionMap[id] = &F;
     for (auto &BB : F) {
       int id = Namer::getBlkId(&BB);
-      // errs() << "YEBIN: bb " << BB.getName() << ": " << id << "\n";
+      errs() << "YEBIN: bb " << id << ": " << BB.getName() << "\n";
       if (id != -1)
         bbMap[id] = &BB;
       for (auto &I : BB) {
         int id = Namer::getInstrId(&I);
-        // errs() << "YEBIN: inst " << id << ": " << I << "\n";
+        errs() << "YEBIN: inst " << id << ": " << I << "\n";
         if (id != -1)
           instMap[id] = &I;
       }
