@@ -1,5 +1,6 @@
 # Execution
 NUM_RUNS=30
+TIMEOUT=7200
 
 # Commands
 CC=clang
@@ -14,20 +15,25 @@ RUNTIME_CFLAGS="-DDEBUG"
 
 # Parallelization options
 # 	- To dump the PDG: -noelle-pdg-dump
-PARALLELIZATION_OPTIONS=-alloc-aa-verbose=1 -noelle-parallelizer-force
+PARALLELIZATION_OPTIONS=-alloc-aa-verbose=1 -noelle-parallelizer-force 
 NOELLE_OPTIONS=-noelle-pdg-verbose=1 -noelle-verbose=2 -noelle-min-hot=0 -noelle-inliner-avoid-hoist-to-main
 TOOLS_OPTIONS=
 OPT_LEVEL=-O3
 
 # Front-end
 INCLUDES=-I../../include/threadpool/include
-FRONTEND_OPTIONS=-O1 -Xclang -disable-llvm-passes
-PRE_MIDDLEEND_OPTIONS=-O0
+FRONTEND_OPTIONS=-O1 -Xclang -disable-llvm-passes 
+PRE_MIDDLEEND_OPTIONS=-O0 #-mem2reg -simplifycfg -simplifycfg-sink-common=false -instcombine -tailcallelim -loop-simplify -lcssa -licm -globalopt -instcombine -ipsccp -gvn -dse -adce -loop-simplify -lcssa -indvars -loop-deletion -instcombine -indvars
 FRONTEND_FLAGS=-emit-llvm $(FRONTEND_OPTIONS)
 
+PARALLEL_PLAIN=parallelized_plain
+PARALLEL_SPEC=parallelized_spec
 OPTIMIZED=parallelized
 OPTIMIZED_AUTOTUNED=parallelized_autotuned
 PRINT_OUTPUT_FILE=test.txt
+# For benchmarks with more than one source file
+BMARK=test
+OBJFILES_BC?= $(shell find . -name \*.c  ! -name 'NOELLE_APIs.c' | sed -e "s/\.c/.bc/" ) $(shell find . -name \*.cpp ! -name 'Parallelizer_utils.cpp' | sed -e "s/\.cpp/.bc/" )
 
 # Autotuner
 # Input to run the autotuner
@@ -57,6 +63,9 @@ all: baseline $(OPTIMIZED)
 	$(CPP) $(INCLUDES) $(FRONTEND_FLAGS) -c $< -o $@
 	opt $(PRE_MIDDLEEND_OPTIONS) $@ -o $@
 
+$(BMARK).bc: $(OBJFILES_BC)
+	llvm-link $^ -o $@
+
 baseline: baseline.bc
 	$(CPP) $(OPT_LEVEL) $^ -o $@
 
@@ -70,17 +79,18 @@ $(OPTIMIZED_AUTOTUNED): test_parallelized_autotuned.bc
 	$(CPP) -std=c++14 -pthreads $(OPT_LEVEL) $< $(LIBS) -o $@
 
 test_parallelized.bc: named_with_metadata.bc Parallelizer_utils.bc
+#test_parallelized.bc: baseline_with_metadata.bc Parallelizer_utils.bc
 	gino $< -o $@ $(NOELLE_OPTIONS) $(PARALLELIZATION_OPTIONS)
 
 test_parallelized_autotuned.bc: baseline_with_metadata.bc input.txt Parallelizer_utils.bc
 	gino-autotuner --parallelizer-args="$< -o $@ $(NOELLE_OPTIONS) $(PARALLELIZATION_OPTIONS)" --libs="$(LIBS)" --input="$(INPUT)" --autotuner-time="$(TIME)" --autotuner-numconf="$(NUM_CONF)" --autotuner-seedconf="$(SEED_CONF)" $(NOSEARCHSPACE) $(NODOALLFILTERING) $(NODOALLTIMEFILTERING)
 
-baseline.bc: test.bc
+baseline.bc: $(BMARK).bc
 	$(CPP) $(OPT_LEVEL) -c -emit-llvm $^ -o $@
 
 # SLAMP
 benchmark.result.slamp.profile: named_with_metadata.bc profile.in
-	PROFILEARGS=`cat profile.in` python $(PROMPT_DRIVER) --named code_to_parallelize.bc -m dep-context -t 32 --target-loop $(TARGETLOOP) --target-fcn $(TARGETFCN) --output benchmark.result.slamp.profile
+	PROFILEARGS=`cat input.txt` python $(PROMPT_DRIVER) --named code_to_parallelize.bc -m dep-context -t 32 --target-loop $(TARGETLOOP) --target-fcn $(TARGETFCN) --output benchmark.result.slamp.profile
 
 result.slamp.profile: benchmark.result.slamp.profile
 	cat benchmark.result.slamp.profile >> result.slamp.profile
@@ -116,15 +126,27 @@ input.txt:
 test_correctness: input.txt baseline $(OPTIMIZED)
 	@../../scripts/test_correctness.sh $(NUM_RUNS)
 
+check_correctness: input.txt baseline $(PARALLEL_PLAIN) $(PARALLEL_SPEC)
+	./baseline `cat input.txt` > output_baseline.txt 2>&1 
+	./$(PARALLEL_PLAIN) `cat input.txt` > output_parallelized_wo_spec.txt 2>&1
+	./$(PARALLEL_SPEC) `cat input.txt` > output_parallelized_spec.txt 2>&1
+
+check_performance: perf_input.txt baseline $(PARALLEL_PLAIN) $(PARALLEL_SPEC)
+	regressions-watchdog $(TIMEOUT) baseline.time ./baseline `cat perf_input.txt`
+	regressions-watchdog $(TIMEOUT) parallel.plain.time ./$(PARALLEL_PLAIN) `cat perf_input.txt`
+	regressions-watchdog $(TIMEOUT) parallel.spec.time ./$(PARALLEL_SPEC) `cat perf_input.txt`
+
+check_gino: perf_input.txt baseline $(OPTIMIZED)
+	regressions-watchdog $(TIMEOUT) baseline.time ./baseline `cat perf_input.txt`
+	regressions-watchdog $(TIMEOUT) parallel.plain.time ./$(OPTIMIZED) `cat perf_input.txt`
+
 clean:
-	mv test.bc test.save
 	rm -f *.bc *.dot *.jpg *.ll *.S *.s *.o baseline $(OPTIMIZED) $(OPTIMIZED_AUTOTUNED) *.prof *.profraw *prof .*.dot
 	rm -f time_parallelized.txt compiler_output.txt ;
 	rm -f output*.txt ;
 	rm -f OUT ;
 	rm -f *.exe
 	rm -rf binaryToRun baselineTime.txt executionTime.txt exploredConfs.json opentuner.db opentuner.log ;
-	mv test.save test.bc
 
 clean-prompt:
 	rm *result.slamp.profile target_list slamp.time
