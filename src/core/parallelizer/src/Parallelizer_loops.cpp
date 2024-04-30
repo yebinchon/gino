@@ -23,6 +23,53 @@
 
 namespace arcana::gino {
 
+static std::string getSCCTypeName(GenericSCC::SCCKind type) {
+  switch (type) {
+  case GenericSCC::LOOP_CARRIED:
+    return "LOOP_CARRIED";
+  case GenericSCC::REDUCTION:
+    return "REDUCTION";
+  case GenericSCC::BINARY_REDUCTION:
+    return "BINARY_REDUCTION";
+  case GenericSCC::LAST_REDUCTION:
+    return "LAST_REDUCTION";
+  case GenericSCC::RECOMPUTABLE:
+    return "RECOMPUTABLE";
+  case GenericSCC::SINGLE_ACCUMULATOR_RECOMPUTABLE:
+    return "SINGLE_ACCUMULATOR_RECOMPUTABLE";
+  case GenericSCC::INDUCTION_VARIABLE:
+    return "INDUCTION_VARIABLE";
+  case GenericSCC::LINEAR_INDUCTION_VARIABLE:
+    return "LINEAR_INDUCTION_VARIABLE";
+  case GenericSCC::LAST_INDUCTION_VARIABLE:
+    return "LAST_INDUCTION_VARIABLE";
+  case GenericSCC::PERIODIC_VARIABLE:
+    return "PERIODIC_VARIABLE";
+  case GenericSCC::LAST_SINGLE_ACCUMULATOR_RECOMPUTABLE:
+    return "LAST_SINGLE_ACCUMULATOR_RECOMPUTABLE";
+  case GenericSCC::UNKNOWN_CLOSED_FORM:
+    return "UNKNOWN_CLOSED_FORM";
+  case GenericSCC::LAST_RECOMPUTABLE:
+    return "LAST_RECOMPUTABLE";
+  case GenericSCC::MEMORY_CLONABLE:
+    return "MEMORY_CLONABLE";
+  case GenericSCC::STACK_OBJECT_CLONABLE:
+    return "STACK_OBJECT_CLONABLE";
+  case GenericSCC::LAST_MEMORY_CLONABLE:
+    return "LAST_MEMORY_CLONABLE";
+  case GenericSCC::LOOP_CARRIED_UNKNOWN:
+    return "LOOP_CARRIED_UNKNOWN";
+  case GenericSCC::LAST_LOOP_CARRIED:
+    return "LAST_LOOP_CARRIED";
+  case GenericSCC::LOOP_ITERATION:
+    return "LOOP_ITERATION";
+  case GenericSCC::LAST_LOOP_ITERATION:
+    return "LAST_LOOP_ITERATION";
+  default:
+    assert(false);
+  }
+}
+
 bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics,
                                     bool readProfile) {
 
@@ -134,20 +181,47 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics,
     }
 
     // TODO: move to separate function?
+    bool print = false; // ls->getHeader()->getName() == "for.cond1.i3" ? 1 : 0;
     auto ldg = ldi->getLoopDG();
     auto deps = ldg->getSortedDependences();
     int num_deps = 0;
     int num_lc_deps = 0;
+
+    auto insts_in_loop = ls->getInstructions();
     for (auto dep : deps) {
-      if (isa<MemoryDependence<Value, Value>>(dep)) {
-        num_deps++;
-        if (dep->isLoopCarriedDependence())
-          num_lc_deps++;
+      auto srcinst = dyn_cast<Instruction>(dep->getSrc());
+      auto dstinst = dyn_cast<Instruction>(dep->getDst());
+      if (insts_in_loop.count(srcinst) && insts_in_loop.count(dstinst)) {
+        if (isa<MemoryDependence<Value, Value>>(dep)) {
+          num_deps++;
+          if (print) {
+            errs() << "DEP FROM LOOP " << ls->getHeader()->getName() << ": \n";
+            errs() << "     " << *dep->getSrc() << "\n";
+            errs() << "     " << *dep->getDst() << "\n";
+          }
+          if (dep->isLoopCarriedDependence())
+            num_lc_deps++;
+        }
       }
     }
     errs() << "DEPS IN LOOP " << ls->getFunction()->getName()
            << "::" << ls->getHeader()->getName() << ": " << num_deps << " "
            << num_lc_deps << "\n";
+
+    auto sccManager = ldi->getSCCManager();
+    auto SCCNodes = sccManager->getSCCDAG()->getSCCs();
+    int id = 0;
+    for (auto sccNode : SCCNodes) {
+      auto scc = sccManager->getSCCAttrs(sccNode);
+      auto type = scc->getKind();
+
+      errs() << "SCCID: " << id << " TypeID: " << type << " = "
+             << getSCCTypeName(type) << "\n";
+      for (auto *SCCI : sccNode->getInstructions()) {
+        errs() << "    " << *SCCI << "\n";
+      }
+      errs() << "END OF SCC " << id++ << "\n";
+    }
 
     /*
      * Get loop ID.

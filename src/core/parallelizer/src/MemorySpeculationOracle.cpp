@@ -67,10 +67,16 @@ bool MemorySpeculationOracle::canThereBeAMemoryDataDependence(
   // return false;
   // loop has been profiled
   if (this->edges.count(loopid)) {
-    auto srcid = Namer::getInstrId(src);
-    auto dstid = Namer::getInstrId(dst);
     // TODO: once PROMPT is able to handle external calls, don't have to check
     if (isExternalCall(src) || isExternalCall(dst))
+      return true;
+
+    auto srcid = Namer::getInstrId(src);
+    auto dstid = Namer::getInstrId(dst);
+
+    // Check if both instructions are part of the loop
+    auto insts_in_loop = loop.getInstructions();
+    if (!insts_in_loop.count(src) || !insts_in_loop.count(dst))
       return true;
 
     errs() << "YEBIN: asking for profiled loop " << loopid << ": " << srcid
@@ -91,6 +97,9 @@ bool MemorySpeculationOracle::canThisDependenceBeLoopCarried(
   if (!fileOpened)
     return true;
 
+  if (!isa<MemoryDependence<Value, Value>>(dep))
+    return true;
+
   auto bb = loop.getHeader();
   auto loopid = Namer::getBlkId(bb);
   // loop has been profiled
@@ -105,6 +114,11 @@ bool MemorySpeculationOracle::canThisDependenceBeLoopCarried(
     if (!srcInst || !dstInst) {
       return true;
     }
+    // Check if both instructions are part of the loop
+    auto insts_in_loop = loop.getInstructions();
+    if (!insts_in_loop.count(srcInst) || !insts_in_loop.count(dstInst))
+      return true;
+
     auto srcid = Namer::getInstrId(srcInst);
     auto dstid = Namer::getInstrId(dstInst);
 

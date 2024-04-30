@@ -205,6 +205,7 @@ bool Parallelizer::parallelizeLoop(LoopContent *loopContent, Noelle &par,
   //   loopFunction->print(errs() << "Final printout:\n"); errs() << "\n";
   // }
   if (verbose != Verbosity::Disabled) {
+    errs() << loopFunction->getName() << "::" << loopHeader->getName() << "\n";
     errs() << prefix << "  The loop has been parallelized with "
            << usedTechnique->getName() << "\n";
     errs() << prefix << "Exit\n";

@@ -54,6 +54,8 @@ bool Parallelizer::doInitialization(Module &M) {
   this->loopIndexesWhiteList = LoopIndexesWhiteList;
   this->loopIndexesBlackList = LoopIndexesBlackList;
 
+  this->PrintSCCs = PrintSCCs;
+
   return false;
 }
 
