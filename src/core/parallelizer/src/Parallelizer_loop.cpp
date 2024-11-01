@@ -20,12 +20,14 @@
  OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #include "Parallelizer.hpp"
+#include "MemSpec.hpp"
 
 namespace arcana::gino {
 
 bool Parallelizer::parallelizeLoop(LoopContent *loopContent,
                                    Noelle &par,
-                                   Heuristics *h) {
+                                   Heuristics *h,
+                                   bool readProfile) {
   auto prefix = "Parallelizer: parallelizerLoop: ";
 
   /*

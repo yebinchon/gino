@@ -23,7 +23,9 @@
 
 namespace arcana::gino {
 
-bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
+bool Parallelizer::parallelizeLoops(Noelle &noelle,
+                                    Heuristics *heuristics,
+                                    bool readProfile) {
 
   /*
    * Fetch the verbosity level.
@@ -134,6 +136,39 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
       }
     }
 
+    // Print PROMPT targets
+    if (!readProfile) {
+      errs() << "PROMPT TARGETS: " << ls->getFunction()->getName() << " "
+             << ls->getHeader()->getName() << "\n";
+    }
+    // TODO: move to separate function?
+    bool print = false;
+    auto ldg = ldi->getLoopDG();
+    auto deps = ldg->getSortedDependences();
+    int num_deps = 0;
+    int num_lc_deps = 0;
+
+    auto insts_in_loop = ls->getInstructions();
+    for (auto dep : deps) {
+      auto srcinst = dyn_cast<Instruction>(dep->getSrc());
+      auto dstinst = dyn_cast<Instruction>(dep->getDst());
+      if (insts_in_loop.count(srcinst) && insts_in_loop.count(dstinst)) {
+        if (isa<MemoryDependence<Value, Value>>(dep)) {
+          num_deps++;
+          if (print) {
+            errs() << "DEP FROM LOOP " << ls->getHeader()->getName() << ": \n";
+            errs() << "     " << *dep->getSrc() << "\n";
+            errs() << "     " << *dep->getDst() << "\n";
+          }
+          if (dep->isLoopCarriedDependence())
+            num_lc_deps++;
+        }
+      }
+    }
+    errs() << "DEPS IN LOOP " << ls->getFunction()->getName()
+           << "::" << ls->getHeader()->getName() << ": " << num_deps << " "
+           << num_lc_deps << "\n";
+
     /*
      * Get loop ID.
      */
@@ -156,7 +191,8 @@ bool Parallelizer::parallelizeLoops(Noelle &noelle, Heuristics *heuristics) {
     /*
      * Parallelize the current loop.
      */
-    auto loopIsParallelized = this->parallelizeLoop(ldi, noelle, heuristics);
+    auto loopIsParallelized =
+        this->parallelizeLoop(ldi, noelle, heuristics, readProfile);
 
     /*
      * Keep track of the parallelization.
